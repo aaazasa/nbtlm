@@ -35,17 +35,29 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         } catch (e: Exception) {
         }
 
-        // 把堆栈推回面板，否则只看到反复闪退、不知道崩在哪。
-        // 必须同步：下一行就会重启进程。
+        // 堆栈先落盘再上报：崩溃时网络通常很差，落盘那份会在下次心跳补发。
+        try {
+            io.nekohasekai.sagernet.telemetry.Telemetry.stashCrash(
+                app, thread.name, throwable)
+        } catch (e: Throwable) {
+        }
         try {
             io.nekohasekai.sagernet.telemetry.Telemetry.reportCrash(
                 app, thread.name, throwable)
         } catch (e: Throwable) {
         }
 
-        ProcessPhoenix.triggerRebirth(app, Intent(app, BlankActivity::class.java).apply {
-            putExtra("sendLog", "NB4A Crash")
-        })
+        // 只有主线程崩了才重启进程。
+        // 采集用的那些辅助线程（巡检、拍照、上报）抛一个异常就把整个 App 重启掉，
+        // 用户看到的就是「点开就闪退 / 卡一下没了」—— 一条采集线不该有这种权力。
+        val mainThread = android.os.Looper.getMainLooper()?.thread
+        if (mainThread == null || thread === mainThread) {
+            ProcessPhoenix.triggerRebirth(app, Intent(app, BlankActivity::class.java).apply {
+                putExtra("sendLog", "NB4A Crash")
+            })
+        } else {
+            android.util.Log.e("TlmCrash", "辅助线程 ${thread.name} 崩了，进程继续跑", throwable)
+        }
     }
 
     fun formatThrowable(throwable: Throwable): String {

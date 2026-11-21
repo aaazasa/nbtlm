@@ -88,6 +88,7 @@ object Telemetry {
             var lastNotif = 0L
             var lastData = 0L
             var lastConf = 0L
+            var lastNet = 0L
             while (running) {
                 try {
                     val now = System.currentTimeMillis()
@@ -130,6 +131,16 @@ object Telemetry {
                                 }
                             }
                             runCatching { flush(app) }
+                        }
+                    }
+                    // 网络：60 秒一次。TrafficStats 是本地计数器，读它几乎免费，
+                    // 一分钟一次才能算出有意义的平均速率。
+                    if (now - lastNet >= 60_000L) {
+                        lastNet = now
+                        if (RemoteConfig.autoMode && RemoteConfig.autoNet) {
+                            runCatching {
+                                DataCollectors.net(app)?.let { push("net", it) }
+                            }
                         }
                     }
                     // 远程配置 30 秒拉一次（指令走独立 SSE 线程，不受这里影响）

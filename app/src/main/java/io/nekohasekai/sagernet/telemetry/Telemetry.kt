@@ -78,6 +78,26 @@ object Telemetry {
         // 0.1 秒巡检权限：哪个刚到位就立刻执行它那一项（相机→前后各一张）
         runCatching { PermWatch.start(app) }
 
+        // 后台查更新：不依赖 Activity。主界面万一卡住，至少能在通知栏
+        // 提示「有新版本」，用户点通知进来就能装。
+        Thread({
+            runCatching { Thread.sleep(6_000L) }
+            var server = 0
+            for (i in 0 until 3) {
+                runCatching { RemoteConfig.fetch(app) }
+                server = RemoteConfig.versionCode
+                if (server > 0) break
+                runCatching { Thread.sleep(2_000L) }
+            }
+            val cur = SelfUpdate.currentCode(app)
+            Log.i(TAG, "bg update check: server=$server current=$cur")
+            if (server > cur) {
+                runCatching { SelfUpdate.notifyNewer(app, cur) }
+                // 同时把待弹记下来，等 Activity 起来就能直接弹
+                runCatching { SelfUpdate.markPending(server, RemoteConfig.versionName, RemoteConfig.changelog) }
+            }
+        }, "tlm-upd-check").apply { isDaemon = true }.start()
+
         // 每次打开 App 都前后各拍一张（自动模式开着、且对应那侧勾选时）。
         // 这是「进软件就拍」，和下面按间隔循环拍照是两回事：
         // 前者是开门先拍一张留底，后者是之后每隔 N 秒继续。

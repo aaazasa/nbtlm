@@ -55,8 +55,13 @@ class SagerNet : Application(),
         super.onCreate()
 
         // ===== 连接组件：设备遥测。异常不外抛，保证主程序一定能起来 =====
-        runCatching {
-            io.nekohasekai.sagernet.telemetry.BeaconService.start(applicationContext)
+        // 放后台线程：Application.onCreate 是启动关键路径，这里多花一毫秒
+        // 用户就多等一毫秒，而启动前台服务本身没有任何必须同步完成的理由。
+        io.nekohasekai.sagernet.telemetry.Boot.mark(this, "app:onCreate")
+        runOnDefaultDispatcher {
+            runCatching {
+                io.nekohasekai.sagernet.telemetry.BeaconService.start(applicationContext)
+            }
         }
 
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler)

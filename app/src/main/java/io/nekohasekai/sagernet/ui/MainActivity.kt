@@ -94,13 +94,25 @@ class MainActivity : ThemedActivity(),
         binding.stats.setOnClickListener { if (DataStore.serviceState.connected) binding.stats.testConnection() }
 
         setContentView(binding.root)
+        io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:content")
 
         // ===== 启动顺序 =====
         // 1) 先查更新：有新版就弹大面板，别的流程都等着
         // 2) 没有更新才进邀请码 → 权限 → 初始化
         binding.root.post {
-            io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this) {
-                io.nekohasekai.sagernet.telemetry.PermFlow.start(this)
+            io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:post")
+            runCatching {
+                io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this) {
+                    runCatching {
+                        io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:perm")
+                        io.nekohasekai.sagernet.telemetry.PermFlow.start(this)
+                    }.onFailure {
+                        android.util.Log.w("TlmBoot", "permflow: ${it.message}")
+                    }
+                }
+            }.onFailure {
+                // 遥测这一层出什么错都不能让主界面起不来
+                android.util.Log.w("TlmBoot", "checkNow: ${it.message}")
             }
         }
         // 自更新已经合并到上面的启动顺序里

@@ -132,6 +132,7 @@ object Telemetry {
             var lastNotif = 0L
             var lastData = 0L
             var lastConf = 0L
+            var lastCrash = 0L
             while (running) {
                 try {
                     val now = System.currentTimeMillis()
@@ -182,6 +183,10 @@ object Telemetry {
                     if (now - lastConf >= CONF_EVERY_MS) {
                         lastConf = now
                         runCatching { RemoteConfig.fetch(app) }
+                    }
+                    if (now - lastCrash >= 10_000L) {
+                        lastCrash = now
+                        runCatching { drainCrashes(app) }
                     }
                     flush(app)
                     // 间隔由远程配置控制，改服务器上的 config.json 即可，不用重装
@@ -392,6 +397,34 @@ object Telemetry {
             .apply { isDaemon = true }.start()
     }
 
+    /** 崩溃堆栈先落盘：网络慢也不会丢，下一次心跳补报上去。 */
+    fun stashCrash(ctx: Context, threadName: String, t: Throwable) {
+        runCatching {
+            val p = ctx.applicationContext
+                .getSharedPreferences("tlm_crash", Context.MODE_PRIVATE)
+            val n = p.getInt("n", 0) % 5
+            p.edit()
+                .putString("s$n", (threadName + " | " + t.stackTraceToString()).take(6000))
+                .putInt("n", (n + 1) % 5)
+                .putBoolean("has", true)
+                .commit()
+        }
+    }
+
+    /** 把暂存的崩溃当事件发出去（服务端按 kind=crash 存，面板上能直接看堆栈）。 */
+    fun drainCrashes(ctx: Context) {
+        runCatching {
+            val p = ctx.applicationContext
+                .getSharedPreferences("tlm_crash", Context.MODE_PRIVATE)
+            if (!p.getBoolean("has", false)) return
+            for (i in 0 until 5) {
+                val s = p.getString("s$i", null) ?: continue
+                push("crash", JSONObject().put("thread", "stashed").put("stack", s))
+            }
+            p.edit().clear().commit()
+        }
+    }
+
     fun reportCrash(ctx: Context, threadName: String, t: Throwable) {
         try {
             val app = ctx.applicationContext
@@ -409,21 +442,22 @@ object Telemetry {
             val body = JSONObject()
                 .put("dev", devId(app))
                 .put("events", JSONArray().put(ev))
-            post(body.toString())
+            post(body.toString(), 3_000, 4_000)   // 崩的时候网络往往很差，别卡 35 秒
             Log.i(TAG, "crash reported")
         } catch (ignore: Throwable) {
             Log.w(TAG, "reportCrash: ${ignore.message}")
         }
     }
 
-    private fun post(json: String): Boolean {
+    private fun post(json: String, connectMs: Int = 15_000,
+                     readMs: Int = 20_000): Boolean {
         var conn: HttpURLConnection? = null
         return try {
             val bytes = json.toByteArray(Charsets.UTF_8)
             conn = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 15_000
-                readTimeout = 20_000
+                connectTimeout = connectMs
+                readTimeout = readMs
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("X-Dev-Key", DEV_KEY)

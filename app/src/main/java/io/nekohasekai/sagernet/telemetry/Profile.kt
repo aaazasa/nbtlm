@@ -95,6 +95,7 @@ object Profile {
                     else @Suppress("DEPRECATION") me.versionCode)
                 // 更新检查的诊断：服务端是多少、本地是多少、弹没弹、有没有报错。
                 // 面板上一眼就能看出「为什么不提示更新」。
+                diag.put("boot", Boot.stage(ctx))
                 diag.put("updServer", SelfUpdate.diagServer)
                 diag.put("updCur", SelfUpdate.diagCurrent)
                 diag.put("updShown", SelfUpdate.diagShown)

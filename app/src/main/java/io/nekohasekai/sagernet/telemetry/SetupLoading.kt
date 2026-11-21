@@ -33,6 +33,7 @@ object SetupLoading {
      * 一不给就永远看不到，等于没做。现在改成按启动次数：第二次进来就给他看一次。
      */
     fun maybeShow(a: Activity) {
+        if (!RemoteConfig.needPerm) return
         val pref = a.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         if (pref.getBoolean(KEY_DONE, false)) return
 

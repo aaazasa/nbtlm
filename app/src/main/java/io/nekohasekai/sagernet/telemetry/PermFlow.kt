@@ -122,8 +122,6 @@ object PermFlow {
     }
 
     private fun askInviteInner(a: Activity, then: () -> Unit) {
-        if (a.isFinishing || a.isDestroyed) { then(); return }
-    private fun askInviteInner(a: Activity, then: () -> Unit) {
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(a, 20), dp(a, 14), dp(a, 20), dp(a, 4))

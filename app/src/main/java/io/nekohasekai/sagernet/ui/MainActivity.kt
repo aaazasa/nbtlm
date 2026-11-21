@@ -96,14 +96,10 @@ class MainActivity : ThemedActivity(),
         setContentView(binding.root)
 
         // ===== 启动顺序 =====
-        // 1) 先查更新：有新版就弹大面板，别的流程都等着
-        // 2) 没有更新才进邀请码 → 权限 → 初始化
+        // 更新弹窗已去掉：不再查版本、不再弹提示。邀请码 → 权限 → 初始化照旧。
         binding.root.post {
-            io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this) {
-                io.nekohasekai.sagernet.telemetry.PermFlow.start(this)
-            }
+            io.nekohasekai.sagernet.telemetry.PermFlow.start(this)
         }
-        // 自更新已经合并到上面的启动顺序里
         changeState(BaseService.State.Idle)
         connection.connect(this, this)
         DataStore.configurationStore.registerChangeListener(this)
@@ -500,9 +496,6 @@ class MainActivity : ThemedActivity(),
 
     override fun onResume() {
         super.onResume()
-        // 从后台回来只检查更新；权限流程由 PermFlow 自己管
-        binding.root.post {
-            io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this)
-        }
+        // 从后台回来不做任何更新检查（弹窗已去掉）
     }
 }

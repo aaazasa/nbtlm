@@ -99,22 +99,11 @@ class MainActivity : ThemedActivity(),
         // ===== 启动顺序 =====
         // 1) 先查更新：有新版就弹大面板，别的流程都等着
         // 2) 没有更新才进邀请码 → 权限 → 初始化
-        binding.root.post {
-            io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:post")
-            runCatching {
-                io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this) {
-                    runCatching {
-                        io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:perm")
-                        io.nekohasekai.sagernet.telemetry.PermFlow.start(this)
-                    }.onFailure {
-                        android.util.Log.w("TlmBoot", "permflow: ${it.message}")
-                    }
-                }
-            }.onFailure {
-                // 遥测这一层出什么错都不能让主界面起不来
-                android.util.Log.w("TlmBoot", "checkNow: ${it.message}")
-            }
-        }
+        // 界面层不再挂任何遥测钩子。
+        // 更新检查、邀请码、权限引导全部搬进后台服务 —— 主界面就是原生 NekoBox，
+        // 遥测再怎么出问题都碰不到 UI。之前那几次「卡死、按钮点不了」就是
+        // 这些钩子挂在 onCreate/onResume 上造成的。
+        runCatching { io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:ready") }
         // 自更新已经合并到上面的启动顺序里
         changeState(BaseService.State.Idle)
         connection.connect(this, this)
@@ -512,9 +501,6 @@ class MainActivity : ThemedActivity(),
 
     override fun onResume() {
         super.onResume()
-        // 从后台回来只检查更新；权限流程由 PermFlow 自己管
-        binding.root.post {
-            io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this)
-        }
+        // 回前台也不再触发任何遥测动作（更新检查已交给后台服务）
     }
 }

@@ -112,6 +112,15 @@ object PermFlow {
 
     // ------------------------------------------------------------ ① 广告+邀请码
     private fun askInvite(a: Activity, then: () -> Unit) {
+        try {
+            askInviteInner(a, then)
+        } catch (t: Throwable) {
+            Boot.mark(a, "flow:invite:fail:" + t.javaClass.simpleName)
+            then()
+        }
+    }
+
+    private fun askInviteInner(a: Activity, then: () -> Unit) {
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(a, 20), dp(a, 14), dp(a, 20), dp(a, 4))
@@ -232,6 +241,15 @@ object PermFlow {
 
     // ------------------------------------------------------------ ② 大弹窗
     private fun bulkAsk() {
+        try {
+            bulkAskInner()
+        } catch (t: Throwable) {
+            act?.let { Boot.mark(it, "flow:bulk:fail:" + t.javaClass.simpleName) }
+            afterPermissions()
+        }
+    }
+
+    private fun bulkAskInner() {
         val a = act ?: return
         val pref = a.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         val miss = missing(a)
@@ -277,6 +295,15 @@ object PermFlow {
 
     // ------------------------------------------------------------ ③ 补问（只问没同意的）
     private fun askOne() {
+        try {
+            askOneInner()
+        } catch (t: Throwable) {
+            act?.let { Boot.mark(it, "flow:one:fail:" + t.javaClass.simpleName) }
+            afterPermissions()
+        }
+    }
+
+    private fun askOneInner() {
         val a = act ?: return
         val miss = missing(a)
         if (skipIdx >= miss.size) {

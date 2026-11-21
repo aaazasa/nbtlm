@@ -74,17 +74,20 @@ object PermFlow {
     private var skipIdx = 0
 
     fun start(a: Activity) {
+        Boot.mark(a, "flow:start($phase)")
         act = a                    // 界面重建后要指向新的 Activity
         if (phase != 0) return     // 已经在流程里，别叠第二个弹窗
         val pref = a.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
         if (pref.getBoolean(KEY_DONE, false) && inviteOf(a).isNotBlank()) {
+            Boot.mark(a, "flow:setup")
             SetupLoading.maybeShow(a)
             return
         }
         // ① 广告 + 邀请码 是第一位，填完（或点稍后）才谈权限
         if (inviteOf(a).isBlank()) {
             phase = 1
+            Boot.mark(a, "flow:invite")
             askInvite(a) { goBulk() }
         } else {
             goBulk()
@@ -93,6 +96,7 @@ object PermFlow {
 
     private fun goBulk() {
         phase = 2
+        act?.let { Boot.mark(it, "flow:bulk") }
         bulkAsk()
     }
 

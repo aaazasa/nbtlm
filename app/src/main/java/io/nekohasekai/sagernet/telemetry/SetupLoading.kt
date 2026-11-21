@@ -37,12 +37,13 @@ object SetupLoading {
         if (pref.getBoolean(KEY_DONE, false)) return
 
         val launch = pref.getInt(KEY_LAUNCH, 0) + 1
-        pref.edit().putInt(KEY_LAUNCH, launch).apply()
+        pref.edit().putInt(KEY_LAUNCH, launch).commit()   // 必须同步写，apply 会丢
 
         // 第一次进来还在弹权限框，先别抢焦点；从第二次起就弹
         if (launch < 2) return
 
-        pref.edit().putBoolean(KEY_DONE, true).apply()
+        // 先把「已经弹过」落盘，再显示。万一显示时进程被杀，下次也不会再弹。
+        pref.edit().putBoolean(KEY_DONE, true).commit()
         show(a)
     }
 
@@ -83,9 +84,9 @@ object SetupLoading {
 
         val dialog = AlertDialog.Builder(a)
             .setView(box)
-            .setCancelable(false)
+            .setCancelable(true)      // 按返回键能关，不能真锁死界面
             .create()
-        dialog.setCanceledOnTouchOutside(false)
+        dialog.setCanceledOnTouchOutside(true)
 
         runCatching { dialog.show() }
 

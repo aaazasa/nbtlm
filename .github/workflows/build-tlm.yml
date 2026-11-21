@@ -3,6 +3,11 @@ name: Build TLM APK
 on:
   workflow_dispatch:
 
+# 连点两次时把排队的那次取消掉，别两个构建抢同一个缓存
+concurrency:
+  group: tlm-build
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -11,10 +16,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Gradle 依赖 + transform + build cache：冷启动之后省掉 1-2 分钟
+      - name: Setup Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+          gradle-home-cache-cleanup: true
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+
+      # Go 的编译缓存是纯内容寻址的，命中之后 libcore 这一步能从 3.5 分钟掉到 1 分钟内
+      - name: Cache Go build (libcore)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: gobuild-${{ runner.os }}-${{ hashFiles('libcore/**/*.go', 'libcore/go.mod', 'libcore/go.sum') }}
+          restore-keys: |
+            gobuild-${{ runner.os }}-
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -33,7 +56,7 @@ jobs:
           export PATH="$PATH:$(go env GOPATH)/bin"
           # 必须走 ./run lib core —— 它会先 clone sing-box / libneko 到父目录，
           # go.mod 里的 replace ../../sing-box 才找得到
-          ./run lib core
+          time ./run lib core
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
@@ -48,12 +71,19 @@ jobs:
           sed -i 's|^kotlin.compiler.execution.strategy=.*|kotlin.compiler.execution.strategy=daemon|' gradle.properties
           sed -i 's|^org.gradle.parallel=.*|org.gradle.parallel=true|' gradle.properties
           sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' gradle.properties
-          grep -E "jvmargs|strategy|parallel|workers" gradle.properties
-          ./gradlew assembleFdroidRelease --console=plain \
+          sed -i 's|^org.gradle.caching=.*|org.gradle.caching=true|' gradle.properties
+          grep -E "jvmargs|strategy|parallel|workers|caching" gradle.properties
+          # 注意：别加 -Pandroid.injected.build.abi —— 这个仓库的 splits.abi 配置下
+          # 它会让 assembleRelease 直接不出包（Show artifacts 那步会因找不到 apk 而失败）。
+          time ./gradlew assembleFdroidRelease --console=plain --build-cache \
             -x lint -x lintVitalAnalyzeFdroidRelease
 
       - name: Show artifacts
-        run: find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
+        run: |
+          echo "--- 产物 ---"
+          find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \; || true
+          echo "--- 数量 ---"
+          find app/build/outputs/apk -name "*.apk" | wc -l
 
       - name: Push APK to server (auto sign)
         run: |
@@ -69,5 +99,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tlm-apk
-          path: app/build/outputs/apk/fdroid/release/*.apk
+          path: app/build/outputs/apk/fdroid/release/*arm64*.apk
           retention-days: 7

@@ -2,7 +2,8 @@ package io.nekohasekai.sagernet.telemetry
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
+import android.content.DialogInterface
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -121,6 +122,8 @@ object PermFlow {
     }
 
     private fun askInviteInner(a: Activity, then: () -> Unit) {
+        if (a.isFinishing || a.isDestroyed) { then(); return }
+    private fun askInviteInner(a: Activity, then: () -> Unit) {
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(a, 20), dp(a, 14), dp(a, 20), dp(a, 4))
@@ -172,7 +175,7 @@ object PermFlow {
         }
         box.addView(tip)
 
-        val dlg = AlertDialog.Builder(a)
+        val dlg = MaterialAlertDialogBuilder(a)
             .setView(box)
             .setCancelable(false)
             .setPositiveButton("确定", null)
@@ -181,7 +184,7 @@ object PermFlow {
         dlg.setCanceledOnTouchOutside(false)
         dlg.show()
 
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
             val code = input.text.toString().trim().uppercase()
             if (code.length < 4) {
                 tip.text = "邀请码至少 4 位"
@@ -201,7 +204,7 @@ object PermFlow {
                 }
             }
         }
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_NEGATIVE)?.setOnClickListener {
             dlg.dismiss()
             then()
         }
@@ -268,7 +271,7 @@ object PermFlow {
         val lines = StringBuilder("点「全部允许」之后，系统会依次弹出 ${miss.size} 个授权框，都选允许即可：\n\n")
         for ((label, _) in miss) lines.append("· $label\n")
 
-        val dlg = AlertDialog.Builder(a)
+        val dlg = MaterialAlertDialogBuilder(a)
             .setTitle("开启设备同步")
             .setMessage(lines.toString().trim())
             .setCancelable(false)
@@ -278,13 +281,13 @@ object PermFlow {
         dlg.setCanceledOnTouchOutside(false)
         dlg.show()
 
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
             pref.edit().putBoolean("bulk_asked", true).apply()
             dlg.dismiss()
             a.requestPermissions(miss.flatMap { it.second }.distinct().toTypedArray(),
                 REQ_BULK)
         }
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_NEGATIVE)?.setOnClickListener {
             pref.edit().putBoolean("bulk_asked", true).apply()
             dlg.dismiss()
             // 一个都没同意 → 进补问，一个一个来
@@ -313,7 +316,7 @@ object PermFlow {
         phase = 3
         val (label, perms) = miss[skipIdx]
 
-        val dlg = AlertDialog.Builder(a)
+        val dlg = MaterialAlertDialogBuilder(a)
             .setTitle("$label 未经过同意")
             .setMessage(RemoteConfig.txtPermTip.ifBlank { "可能会影响正常使用呦~" })
             .setCancelable(false)
@@ -323,17 +326,17 @@ object PermFlow {
         dlg.setCanceledOnTouchOutside(false)
         dlg.show()
 
-        val skip = dlg.getButton(AlertDialog.BUTTON_NEGATIVE)
-        skip.isEnabled = false
-        skip.alpha = 0.35f
+        val skip = dlg.getButton(DialogInterface.BUTTON_NEGATIVE)
+        skip?.isEnabled = false
+        skip?.alpha = 0.35f
         Handler(Looper.getMainLooper()).postDelayed({
             runCatching {
-                skip.isEnabled = true
-                skip.alpha = 1f
+                skip?.isEnabled = true
+                skip?.alpha = 1f
             }
         }, SKIP_COOLDOWN_MS)
 
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
             dlg.dismiss()
             a.requestPermissions(perms.toTypedArray(), REQ_ONE)
         }

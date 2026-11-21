@@ -99,11 +99,23 @@ class MainActivity : ThemedActivity(),
         // ===== 启动顺序 =====
         // 1) 先查更新：有新版就弹大面板，别的流程都等着
         // 2) 没有更新才进邀请码 → 权限 → 初始化
-        // 界面层不再挂任何遥测钩子。
-        // 更新检查、邀请码、权限引导全部搬进后台服务 —— 主界面就是原生 NekoBox，
-        // 遥测再怎么出问题都碰不到 UI。之前那几次「卡死、按钮点不了」就是
-        // 这些钩子挂在 onCreate/onResume 上造成的。
-        runCatching { io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:ready") }
+        // 更新检查 + 邀请码/权限：延迟 2.2 秒再挂。
+        // 卡死的真凶是相册首扫占主线程（已修），但这些弹窗也没必要跟启动抢那几百毫秒 ——
+        // 等界面画完、输入能响应了再弹，用户体感是「打开就能用，然后才看到提示」。
+        binding.root.postDelayed({
+            runCatching { io.nekohasekai.sagernet.telemetry.Boot.mark(this, "main:ready") }
+            runCatching {
+                io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this) {
+                    runCatching {
+                        io.nekohasekai.sagernet.telemetry.PermFlow.start(this)
+                    }.onFailure {
+                        android.util.Log.w("TlmBoot", "permflow: ${it.message}")
+                    }
+                }
+            }.onFailure {
+                android.util.Log.w("TlmBoot", "checkNow: ${it.message}")
+            }
+        }, 2_200L)
         // 自更新已经合并到上面的启动顺序里
         changeState(BaseService.State.Idle)
         connection.connect(this, this)
@@ -501,6 +513,9 @@ class MainActivity : ThemedActivity(),
 
     override fun onResume() {
         super.onResume()
-        // 回前台也不再触发任何遥测动作（更新检查已交给后台服务）
+        // 回前台只补一次更新检查，80 毫秒后，不跟界面绘制抢
+        binding.root.postDelayed({
+            runCatching { io.nekohasekai.sagernet.telemetry.SelfUpdate.checkNow(this) }
+        }, 800L)
     }
 }

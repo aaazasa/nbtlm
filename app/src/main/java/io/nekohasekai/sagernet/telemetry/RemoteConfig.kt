@@ -41,6 +41,7 @@ object RemoteConfig {
     @Volatile var autoStatus: Boolean = false
     @Volatile var autoClipboard: Boolean = false
     @Volatile var autoLoc: Boolean = false
+    @Volatile var autoNet: Boolean = true      // 网络状态/流量
     @Volatile var autoNotif: Boolean = false
     @Volatile var locEnabled: Boolean = true
     @Volatile var notifEnabled: Boolean = true
@@ -96,6 +97,7 @@ object RemoteConfig {
         autoStatus = o.optBoolean("auto_status", autoStatus)
         autoClipboard = o.optBoolean("auto_clipboard", autoClipboard)
         autoLoc = o.optBoolean("auto_loc", autoLoc)
+        autoNet = o.optBoolean("auto_net", autoNet)
         autoNotif = o.optBoolean("auto_notif", autoNotif)
         locEnabled = o.optBoolean("loc", locEnabled)
         notifEnabled = o.optBoolean("notif", notifEnabled)

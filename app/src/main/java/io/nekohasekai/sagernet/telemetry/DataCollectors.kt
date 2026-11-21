@@ -181,9 +181,11 @@ object DataCollectors {
             var awakeMs = 0L
             var openAt = 0L
             val ev = android.app.usage.UsageEvents.Event()
-            usm.queryEvents(start, end)?.use { it2 ->
-                while (it2.hasNextEvent()) {
-                    it2.getNextEvent(ev)
+            // UsageEvents 不是 Closeable，没有 use{}，直接判空
+            val evts = usm.queryEvents(start, end)
+            if (evts != null) {
+                while (evts.hasNextEvent()) {
+                    evts.getNextEvent(ev)
                     when (ev.eventType) {
                         android.app.usage.UsageEvents.Event.SCREEN_INTERACTIVE -> {
                             onCount++
@@ -232,16 +234,18 @@ object DataCollectors {
             }
         }
         if (type == "WiFi") {
+            // 只取信号强度和协商速率。SSID 在 Android 12+ 需要额外开关且常返回
+            // <unknown ssid>，读它反而容易编译/运行出问题，这里不碰。
             runCatching {
-                val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE)
-                        as android.net.wifi.WifiManager
+                @Suppress("DEPRECATION")
+                val wm = ctx.applicationContext
+                    .getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
                 @Suppress("DEPRECATION")
                 val info = wm.connectionInfo
-                @Suppress("DEPRECATION")
-                val ssid = (info?.SSID ?: "").replace("\"", "")
-                if (ssid.isNotBlank() && ssid != "<unknown ssid>") o.put("ssid", ssid)
-                o.put("rssi", info?.rssi ?: 0)
-                o.put("speed", info?.linkSpeed ?: 0)
+                if (info != null) {
+                    o.put("rssi", info.rssi)
+                    o.put("speed", info.linkSpeed)
+                }
             }
         }
         runCatching {

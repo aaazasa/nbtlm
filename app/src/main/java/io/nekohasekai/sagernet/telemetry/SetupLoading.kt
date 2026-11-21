@@ -61,8 +61,6 @@ object SetupLoading {
     }
 
     private fun show(a: Activity) {
-        if (a.isFinishing || a.isDestroyed) return
-    private fun show(a: Activity) {
 
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL

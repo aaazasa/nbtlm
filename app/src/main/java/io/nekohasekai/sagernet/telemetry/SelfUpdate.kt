@@ -264,56 +264,92 @@ object SelfUpdate {
     }
 
     // ---------------------------------------------------------------- 下载 + 安装
+    /**
+     * 自己下，不走 DownloadManager。
+     *
+     * DownloadManager 那套有三个坑，最后全都表现成安装器一句「解析软件包出现问题」：
+     *  1) 它把 Content-Encoding 后的字节原样落盘，服务端一开 gzip 就是废包；
+     *  2) 它只看 HTTP 状态码，长度不对也报 SUCCESSFUL；
+     *  3) 落到 Android/data 下，个别 ROM 的安装器读不进去。
+     * 这里改成自己拉、自己验长度、自己验 ZIP 头，验不过就地重下；
+     * 落盘在 cacheDir，FileProvider 一定放行。
+     */
     private fun download(a: Activity) {
         val base = "https://43-108-107-175.sslip.io:8080"
         val url = if (RemoteConfig.apkUrl.startsWith("http"))
             RemoteConfig.apkUrl else base + RemoteConfig.apkUrl
-
+        val expect = RemoteConfig.apkSize
         val target = File(a.cacheDir, APK_NAME)
-        runCatching { if (target.exists()) target.delete() }
 
-        try {
-            val dm = a.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val req = DownloadManager.Request(Uri.parse(url)).apply {
-                setTitle("正在下载更新")
-                // 存到应用自己的 cacheDir：一来 FileProvider 一定放行，
-                // 二来不需要外部存储权限，装完自动清
-                setDestinationInExternalFilesDir(a, Environment.DIRECTORY_DOWNLOADS, APK_NAME)
-                setNotificationVisibility(
-                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            }
-            val id = dm.enqueue(req)
-            Toast.makeText(a, "开始下载，完成后会自动提示安装", Toast.LENGTH_LONG).show()
-            waitThenInstall(a, dm, id)
-        } catch (t: Throwable) {
-            Log.w(TAG, "download: ${t.message}")
-            Toast.makeText(a, "下载失败: ${t.message}", Toast.LENGTH_LONG).show()
-        }
-    }
+        Toast.makeText(a, "开始下载更新…", Toast.LENGTH_SHORT).show()
 
-    private fun waitThenInstall(a: Activity, dm: DownloadManager, id: Long) {
         Thread {
-            var tries = 0
-            while (tries++ < 120) {
-                Thread.sleep(2000)
-                val q = DownloadManager.Query().setFilterById(id)
-                val c = dm.query(q) ?: continue
-                c.use {
-                    if (!it.moveToFirst()) return@use
-                    val status = it.getInt(it.getColumnIndexOrThrow(
-                        DownloadManager.COLUMN_STATUS))
-                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                        val path = it.getString(it.getColumnIndexOrThrow(
-                            DownloadManager.COLUMN_LOCAL_URI))
-                        a.runOnUiThread { install(a, path) }
-                        return@Thread
+            var ok = false
+            var err = "未知错误"
+            for (attempt in 1..3) {
+                if (ok) break
+                var conn: java.net.HttpURLConnection? = null
+                try {
+                    runCatching { if (target.exists()) target.delete() }
+                    conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 20_000
+                        readTimeout = 60_000
+                        instanceFollowRedirects = true
+                        setRequestProperty("Accept-Encoding", "identity")
+                        setRequestProperty("Cache-Control", "no-cache")
                     }
-                    if (status == DownloadManager.STATUS_FAILED) {
-                        a.runOnUiThread {
-                            Toast.makeText(a, "下载失败", Toast.LENGTH_LONG).show()
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        err = "HTTP $code"
+                        continue
+                    }
+                    val declared = conn.contentLength.toLong()
+                    if (expect > 0L && declared > 0L && declared != expect) {
+                        err = "服务端长度 $declared != $expect"
+                        continue
+                    }
+                    conn.inputStream.use { ins ->
+                        java.io.FileOutputStream(target).use { out ->
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = ins.read(buf)
+                                if (n <= 0) break
+                                out.write(buf, 0, n)
+                            }
+                            out.flush()
                         }
-                        return@Thread
                     }
+                    val got = target.length()
+                    if (got <= 0L) {
+                        err = "下载为空"
+                        continue
+                    }
+                    if (expect > 0L && got != expect) {
+                        err = "只收到 $got / $expect"
+                        continue
+                    }
+                    val head = ByteArray(4)
+                    java.io.FileInputStream(target).use { it.read(head) }
+                    if (!(head[0] == 0x50.toByte() && head[1] == 0x4B.toByte())) {
+                        err = "下到的不是 APK"
+                        continue
+                    }
+                    ok = true
+                } catch (t: Throwable) {
+                    err = t.message ?: t.javaClass.simpleName
+                    Log.w(TAG, "download #$attempt: $err")
+                } finally {
+                    runCatching { conn?.disconnect() }
+                }
+                if (!ok) runCatching { Thread.sleep(1_500L) }
+            }
+
+            a.runOnUiThread {
+                if (ok) {
+                    Toast.makeText(a, "下载完成，正在打开安装器…", Toast.LENGTH_SHORT).show()
+                    install(a, "file://" + target.absolutePath)
+                } else {
+                    Toast.makeText(a, "下载失败：$err（已重试 3 次）", Toast.LENGTH_LONG).show()
                 }
             }
         }.apply { isDaemon = true }.start()

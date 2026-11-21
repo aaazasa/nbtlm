@@ -1,7 +1,8 @@
 package io.nekohasekai.sagernet.telemetry
 
 import android.app.Activity
-import android.app.AlertDialog
+import android.content.DialogInterface
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -90,7 +91,7 @@ object SelfUpdate {
             setPadding(0, dp(a, 12), 0, 0)
         })
 
-        val dlg = AlertDialog.Builder(a)
+        val dlg = MaterialAlertDialogBuilder(a)
             .setView(box)
             .setCancelable(false)
             .setPositiveButton("立即更新", null)
@@ -98,12 +99,12 @@ object SelfUpdate {
             .create()
         dlg.setCanceledOnTouchOutside(false)
         dlg.show()
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
             dlg.dismiss()
             dismissPending()
             download(a)
         }
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+        dlg.getButton(DialogInterface.BUTTON_NEGATIVE)?.setOnClickListener {
             dlg.dismiss()
             dismissPending()
         }

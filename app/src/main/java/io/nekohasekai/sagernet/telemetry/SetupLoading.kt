@@ -1,7 +1,8 @@
 package io.nekohasekai.sagernet.telemetry
 
 import android.app.Activity
-import android.app.AlertDialog
+import android.content.DialogInterface
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Context
 import android.graphics.Color
 import android.os.Handler
@@ -60,6 +61,8 @@ object SetupLoading {
     }
 
     private fun show(a: Activity) {
+        if (a.isFinishing || a.isDestroyed) return
+    private fun show(a: Activity) {
 
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
@@ -83,7 +86,7 @@ object SetupLoading {
             setTextColor(Color.parseColor("#1f2328"))
         })
 
-        val dialog = AlertDialog.Builder(a)
+        val dialog = MaterialAlertDialogBuilder(a)
             .setView(box)
             .setCancelable(true)      // 按返回键能关，不能真锁死界面
             .create()

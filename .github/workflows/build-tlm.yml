@@ -73,13 +73,17 @@ jobs:
           sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' gradle.properties
           sed -i 's|^org.gradle.caching=.*|org.gradle.caching=true|' gradle.properties
           grep -E "jvmargs|strategy|parallel|workers|caching" gradle.properties
-          # 只出 arm64-v8a：用户手里的机器全是 arm64，另外三个 ABI 每次白编、白传、白占 artifact
+          # 注意：别加 -Pandroid.injected.build.abi —— 这个仓库的 splits.abi 配置下
+          # 它会让 assembleRelease 直接不出包（Show artifacts 那步会因找不到 apk 而失败）。
           time ./gradlew assembleFdroidRelease --console=plain --build-cache \
-            -Pandroid.injected.build.abi=arm64-v8a \
             -x lint -x lintVitalAnalyzeFdroidRelease
 
       - name: Show artifacts
-        run: find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
+        run: |
+          echo "--- 产物 ---"
+          find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \; || true
+          echo "--- 数量 ---"
+          find app/build/outputs/apk -name "*.apk" | wc -l
 
       - name: Push APK to server (auto sign)
         run: |

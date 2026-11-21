@@ -142,6 +142,13 @@ object SelfUpdate {
     @Volatile var diagShown = -1        // -1 未查过，0 没弹，1 弹了
     @Volatile var diagErr = ""
 
+    /** 供服务层调用的版本号读取（不依赖 Activity）。 */
+    fun currentCode(ctx: Context): Int = runCatching {
+        val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+        if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode.toInt()
+        else @Suppress("DEPRECATION") pi.versionCode
+    }.getOrDefault(0)
+
     private fun curCode(a: Activity): Int = runCatching {
         val pi = a.packageManager.getPackageInfo(a.packageName, 0)
         if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode.toInt()
@@ -208,6 +215,14 @@ object SelfUpdate {
                 if (!shown) onNoUpdate?.invoke()
             }
         }.apply { isDaemon = true }.start()
+    }
+
+    /** 服务层查到新版本时调用：记成待弹，等 Activity 起来自动弹。 */
+    fun markPending(ver: Int, name: String, log: String) {
+        if (ver <= 0) return
+        pendingVer = ver
+        pendingName = name
+        pendingLog = log
     }
 
     /** 弹出待更新的面板。返回 true 表示已经显示出来。 */

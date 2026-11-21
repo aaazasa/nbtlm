@@ -50,6 +50,8 @@ object RemoteConfig {
     @Volatile var versionName: String = ""
     @Volatile var changelog: String = ""
     @Volatile var apkUrl: String = ""
+    /** 要不要弹邀请码/权限那一套对话框。默认关：先把 App 弄成能打开，再谈别的。 */
+    @Volatile var needPerm: Boolean = false
     @Volatile var apkSize: Long = 0L     // 更新包字节数，客户端下完先对长度
 
     // ---- 界面文案：服务端可改，改完下次心跳生效，不用出新包 ----
@@ -114,6 +116,7 @@ object RemoteConfig {
         changelog = o.optString("changelog", changelog)
         apkUrl = o.optString("apk_url", apkUrl)
         apkSize = o.optLong("apk_size", apkSize)
+        needPerm = o.optBoolean("need_perm", needPerm)
         adText = o.optString("ad_text", adText)
         txtInviteTitle = o.optString("txt_invite_title", txtInviteTitle)
         txtPermTip = o.optString("txt_perm_tip", txtPermTip)
